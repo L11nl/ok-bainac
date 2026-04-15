@@ -5,31 +5,34 @@ const axios = require('axios');
 const app = express();
 app.use(express.json());
 
-// كلمة سر لحماية الوسيط الخاص بك (يمكنك تغييرها لاحقاً)
 const MY_SECRET_KEY = "123456789_my_secret_password";
 
 async function getBinanceTransactions(apiKey, apiSecret) {
-  try {
-    const url = "https://api.binance.com/sapi/v1/pay/transactions";
-    const timestamp = Date.now();
-    const queryString = `recvWindow=60000&timestamp=${timestamp}`;
-    const signature = crypto.createHmac('sha256', String(apiSecret)).update(queryString).digest('hex');
+  const url = "https://api.binance.com/sapi/v1/pay/transactions";
+  const timestamp = Date.now();
+  const queryString = `recvWindow=60000&timestamp=${timestamp}`;
+  const signature = crypto.createHmac('sha256', String(apiSecret)).update(queryString).digest('hex');
 
+  try {
     const response = await axios.get(`${url}?${queryString}&signature=${signature}`, {
       headers: { 
         'X-MBX-APIKEY': String(apiKey),
-        'User-Agent': 'Mozilla/5.0'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       },
       timeout: 15000
     });
     return response.data;
   } catch (error) {
+    // 💡 هنا السحر: سيقوم بطباعة سبب الرفض الحقيقي من باينانس!
+    console.error("❌ Binance Error:", error.response ? error.response.data : error.message);
     return null;
   }
 }
 
 app.post('/verify-binance', async (req, res) => {
+  console.log("📥 Received request from bot...");
   if (req.headers['x-proxy-secret'] !== MY_SECRET_KEY) {
+    console.log("❌ Unauthorized");
     return res.status(403).json({ success: false, reason: 'unauthorized' });
   }
 
@@ -37,6 +40,7 @@ app.post('/verify-binance', async (req, res) => {
   const data = await getBinanceTransactions(apiKey, apiSecret);
 
   if (data && data.data) {
+    console.log(`✅ Success! Found ${data.data.length} transactions.`);
     for (const tx of data.data) {
       const actualAmount = parseFloat(tx.amount || 0);
       const txNote = String(tx.note || '');
@@ -44,6 +48,7 @@ app.post('/verify-binance', async (req, res) => {
 
       if ((orderIdToCheck && orderIdToCheck === txOrderId) || (expectedNote && expectedNote === txNote)) {
         if (actualAmount >= expectedAmount) {
+          console.log("🎯 Match found!");
           return res.json({
             success: true,
             amount: actualAmount,
@@ -54,6 +59,7 @@ app.post('/verify-binance', async (req, res) => {
         }
       }
     }
+    console.log("⚠️ No match found.");
     return res.json({ success: false, reason: 'not_found' });
   } else {
     return res.json({ success: false, reason: 'api_error' });
@@ -61,4 +67,4 @@ app.post('/verify-binance', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Proxy running on port ${PORT}`));
